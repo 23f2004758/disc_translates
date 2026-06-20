@@ -1,0 +1,138 @@
+require("dotenv").config();
+
+const fs = require("fs");
+const { Client, GatewayIntentBits } = require("discord.js");
+const { translate } = require("@vitalets/google-translate-api");
+const TRANSLATE_CHANNELS = ["translate"];
+const cache = new Map();
+const cooldowns = new Map();
+// let targetLanguage = "en";
+let userLanguages = {};
+
+if (fs.existsSync("languages.json")) {
+  userLanguages = JSON.parse(
+    fs.readFileSync("languages.json", "utf8")
+  );
+}
+
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+client.once("clientReady", () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+
+  if (!TRANSLATE_CHANNELS.includes(message.channel.name)) {
+    return;
+  }
+
+  // Change language command
+  if (message.content.startsWith("!lang ")) {
+    const choice = message.content.split(" ")[1].toLowerCase();
+
+    const languages = {
+      english: "en",
+      japanese: "ja",
+      korean: "ko",
+      german: "de",
+      hindi: "hi"
+    };
+
+    if (!languages[choice]) {
+      return message.reply(
+        "❌ Available languages: english, japanese, korean, german, hindi"
+      );
+    }
+
+    userLanguages[message.author.id] = languages[choice];
+
+    fs.writeFileSync(
+      "languages.json",
+      JSON.stringify(userLanguages, null, 2)
+    );
+
+    return message.reply(
+      `✅ Your language is now ${choice}`
+    );
+  }
+
+  // Show current language
+  if (message.content === "!mylang") {
+    const lang =
+      userLanguages[message.author.id] || "en";
+
+    return message.reply(
+      `🌐 Your current language is ${lang}`
+    );
+  }
+
+  if (message.content.startsWith("!")) {
+  return;
+}
+
+  try {
+    const targetLanguage =
+      userLanguages[message.author.id] || "en";
+
+    // Cooldown starts here
+    const now = Date.now();
+
+    if (cooldowns.has(message.author.id)) {
+      const expires = cooldowns.get(message.author.id);
+
+      if (now < expires) {
+        return message.reply(
+          "⏳ Please wait 5 seconds before translating again."
+        );
+      }
+    }
+
+    cooldowns.set(
+      message.author.id,
+      now + 5000
+    );
+
+    // Cache
+    const cacheKey =
+      `${message.content}-${targetLanguage}`;
+
+    if (cache.has(cacheKey)) {
+      return message.reply(
+        `🌐 Translation:\n${cache.get(cacheKey)}`
+      );
+    }
+
+    const result = await translate(
+      message.content,
+      {
+        to: targetLanguage,
+      }
+    );
+
+    if (
+      result.text.toLowerCase() ===
+      message.content.toLowerCase()
+    ) {
+      return;
+    }
+
+    cache.set(cacheKey, result.text);
+
+    await message.reply(
+      `🌐 Translation:\n${result.text}`
+    );
+
+  } catch (err) {
+    console.error(err);
+  }
+});
+client.login(process.env.TOKEN);
