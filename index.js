@@ -42,6 +42,9 @@ client.once("clientReady", () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  console.log(
+  `[MSG] ${message.author.username}: ${message.content}`
+);
 
   if (!TRANSLATE_CHANNELS.includes(message.channel.name)) {
     return;
@@ -144,7 +147,11 @@ client.on("messageCreate", async (message) => {
     );
 
   } catch (err) {
-    console.error(err);
-  }
+  console.error("Translation Error:", err);
+
+  message.reply(
+    "❌ Translation service is temporarily rate-limited."
+  );
+}
 });
 client.login(process.env.TOKEN);
