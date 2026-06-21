@@ -12,9 +12,19 @@ app.listen(process.env.PORT || 3000, () => {
   console.log("Web server started");
 });
 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const genAI = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY
+);
+
+const model = genAI.getGenerativeModel({
+  model: "gemini-1.5-flash"
+});
+
 const fs = require("fs");
 const { Client, GatewayIntentBits } = require("discord.js");
-const { translate } = require("@vitalets/google-translate-api");
+// const { translate } = require("@vitalets/google-translate-api");
 const TRANSLATE_CHANNELS = ["translate"];
 const cache = new Map();
 const cooldowns = new Map();
@@ -42,9 +52,6 @@ client.once("clientReady", () => {
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-  console.log(
-  `[MSG] ${message.author.username}: ${message.content}`
-);
 
   if (!TRANSLATE_CHANNELS.includes(message.channel.name)) {
     return;
@@ -55,16 +62,16 @@ client.on("messageCreate", async (message) => {
     const choice = message.content.split(" ")[1].toLowerCase();
 
     const languages = {
-      english: "en",
-      japanese: "ja",
-      korean: "ko",
-      german: "de",
-      hindi: "hi"
-    };
+  english: "English",
+  japanese: "Japanese",
+  korean: "Korean",
+  german: "German",
+  spanish: "Spanish"
+};
 
     if (!languages[choice]) {
       return message.reply(
-        "❌ Available languages: english, japanese, korean, german, hindi"
+        "❌ Available languages: english, japanese, korean, german, spanish"
       );
     }
 
@@ -90,13 +97,29 @@ client.on("messageCreate", async (message) => {
     );
   }
 
-  if (message.content.startsWith("!")) {
-  return;
+  if (message.content.startsWith("!ask ")) {
+  const prompt = message.content.slice(5);
+
+  try {
+    const result =
+      await model.generateContent(prompt);
+
+    return message.reply(
+      result.response.text()
+    );
+  } catch (err) {
+    console.error(err);
+
+    return message.reply(
+      "❌ Gemini error."
+    );
+  }
+
 }
 
   try {
     const targetLanguage =
-      userLanguages[message.author.id] || "en";
+      userLanguages[message.author.id] || "English";
 
     // Cooldown starts here
     const now = Date.now();
@@ -126,32 +149,56 @@ client.on("messageCreate", async (message) => {
       );
     }
 
-    const result = await translate(
-      message.content,
-      {
-        to: targetLanguage,
-      }
-    );
+    // const result = await translate(
+    //   message.content,
+    //   {
+    //     to: targetLanguage,
+    //   }
+    // );
 
-    if (
-      result.text.toLowerCase() ===
-      message.content.toLowerCase()
-    ) {
-      return;
-    }
+    // if (
+    //   result.text.toLowerCase() ===
+    //   message.content.toLowerCase()
+    // ) {
+    //   return;
+    // }
 
-    cache.set(cacheKey, result.text);
+    // cache.set(cacheKey, result.text);
 
-    await message.reply(
-      `🌐 Translation:\n${result.text}`
-    );
+    // await message.reply(
+    //   `🌐 Translation:\n${result.text}`
+    // );
+
+    const prompt = `
+Translate the following text to ${targetLanguage}.
+
+Only return the translated text.
+Do not explain anything.
+
+Text:
+${message.content}
+`;
+
+const result = await model.generateContent(prompt);
+
+const translated =
+  result.response.text().trim();
+
+if (
+  translated.toLowerCase() ===
+  message.content.toLowerCase()
+) {
+  return;
+}
+
+cache.set(cacheKey, translated);
+
+await message.reply(
+  `🌐 Translation:\n${translated}`
+);
 
   } catch (err) {
-  console.error("Translation Error:", err);
-
-  message.reply(
-    "❌ Translation service is temporarily rate-limited."
-  );
-}
+    console.error(err);
+  }
 });
 client.login(process.env.TOKEN);
